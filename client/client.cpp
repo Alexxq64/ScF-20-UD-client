@@ -4,8 +4,17 @@
 #include <thread>
 #include <winsock2.h>
 
+#ifdef _WIN32
+#include <Windows.h>
 #pragma comment(lib, "ws2_32.lib")
-
+#else
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#define SOCKET int
+#define INVALID_SOCKET -1
+#endif
 #define PORT 12345
 
 SOCKET clientSocket;
@@ -33,14 +42,18 @@ void menuPrompt() {
 
 bool createClient() {
 	WSADATA wsaData;
+#ifdef _WIN32
 	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
 		std::cerr << "Failed to initialize winsock" << std::endl;
 		return false;
 	}
+#endif
 	clientSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (clientSocket == INVALID_SOCKET) {
 		std::cerr << "Failed to create socket" << std::endl;
+#ifdef _WIN32
 		WSACleanup();
+#endif
 		return false;
 	}
 	serverAddress.sin_family = AF_INET;
@@ -211,6 +224,10 @@ int main() {
 
 	receiveThread.join();
 	consoleThread.join();
+
+#ifdef _WIN32
+	WSACleanup();
+#endif
 
 	return 0;
 }
