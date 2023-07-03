@@ -8,12 +8,14 @@
 #include <Windows.h>
 #pragma comment(lib, "ws2_32.lib")
 #else
+#include <cstring>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #define SOCKET int
 #define INVALID_SOCKET -1
+#define Sleep(x) usleep((x)*1000)
 #endif
 
 #ifdef _WIN32
