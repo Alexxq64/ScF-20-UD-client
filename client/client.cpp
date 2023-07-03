@@ -117,7 +117,8 @@ void handleMessage() {
 	case 'M':
 		std::cout << std::endl;
 		std::cout << std::endl;
-		std::cout << "\x1b[32m" << "----  " << text << std::endl;
+		//std::cout << "\x1b[32m" << "----  " << text << std::endl;
+		std::cout << "----  " << text << std::endl;
 		std::cout << std::endl;
 		menuPrompt();
 		break;
@@ -157,7 +158,8 @@ void sendMessage() {
 		std::cin.ignore();
 		text = "";
 		std::getline(std::cin, text);
-		text = "M:" + clientName + "  --->  " + text + "\x1b[0m";
+		//text = "M:" + clientName + "  --->  " + text + "\x1b[0m";
+		text = "M:" + clientName + "  --->  " + text;
 		messageTo(text, "receiver");
 	}
 	std::cout << std::endl;
