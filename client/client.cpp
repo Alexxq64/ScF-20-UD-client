@@ -1,10 +1,10 @@
-﻿#define _WINSOCK_DEPRECATED_NO_WARNINGS
-#include <iostream>
+﻿#include <iostream>
 #include <string>
 #include <thread>
-#include <winsock2.h>
 
 #ifdef _WIN32
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#include <winsock2.h>
 #include <Windows.h>
 #pragma comment(lib, "ws2_32.lib")
 #else
@@ -15,21 +15,26 @@
 #define SOCKET int
 #define INVALID_SOCKET -1
 #endif
+
+#ifdef _WIN32
+#define CROSS_PLATFORM_SOCKET_ERROR SOCKET_ERROR
+#else
+#define CROSS_PLATFORM_SOCKET_ERROR -1
+#endif
+
 #define PORT 12345
 
 SOCKET clientSocket;
-SOCKADDR_IN senderAddress;
-SOCKADDR_IN receiverAddress;
-SOCKADDR_IN serverAddress;
+struct sockaddr_in senderAddress;
+struct sockaddr_in receiverAddress;
+struct sockaddr_in serverAddress;
 
 char buffer[1024];
 
 std::string clientName;
 std::string receiver;
-//std::string sender;
 std::string text;
 char command;
-
 
 void menuPrompt() {
 	std::cout << "\n";
@@ -39,15 +44,15 @@ void menuPrompt() {
 	std::cout << "Enter your choice: ";
 }
 
-
 bool createClient() {
-	WSADATA wsaData;
 #ifdef _WIN32
+	WSADATA wsaData;
 	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
 		std::cerr << "Failed to initialize winsock" << std::endl;
 		return false;
 	}
 #endif
+
 	clientSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (clientSocket == INVALID_SOCKET) {
 		std::cerr << "Failed to create socket" << std::endl;
@@ -56,31 +61,41 @@ bool createClient() {
 #endif
 		return false;
 	}
+
 	serverAddress.sin_family = AF_INET;
 	serverAddress.sin_addr.s_addr = inet_addr("127.0.0.1");
 	serverAddress.sin_port = htons(PORT);
+
 	std::cout << "Enter your name: ";
 	std::getline(std::cin, clientName);
 	std::cout << std::endl;
+
 	return true;
 }
 
-SOCKADDR_IN getAddress(std::string IP, int port) {
-	SOCKADDR_IN address;
+struct sockaddr_in getAddress(std::string IP, int port) {
+	struct sockaddr_in address;
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = inet_addr(IP.c_str());
 	address.sin_port = htons(port);
 	return address;
 }
 
-
 bool messageTo(std::string text, std::string name = "server") {
-	SOCKADDR_IN address;
+	struct sockaddr_in address;
 	address = (name == "server") ? serverAddress : receiverAddress;
-	//address = (name == "server") ? serverAddress : getAddressByName(name);
-	if (sendto(clientSocket, text.c_str(), text.size(), 0, (SOCKADDR*)&address, sizeof(address)) == SOCKET_ERROR) {
+
+	int result = sendto(clientSocket, text.c_str(), text.size(), 0, (struct sockaddr*)&address, sizeof(address));
+	if (result == CROSS_PLATFORM_SOCKET_ERROR) {
+#ifdef _WIN32
+		int error = WSAGetLastError();
+		std::cerr << "Failed to send message. Error code: " << error << std::endl;
+#else
+		perror("Failed to send message");
+#endif
 		return false;
 	}
+
 	return true;
 }
 
@@ -89,22 +104,34 @@ void registerClient() {
 	messageTo(text);
 }
 
-
 void getMessage() {
 	int senderAddressSize;
 	memset(buffer, 0, sizeof(buffer));
 	senderAddressSize = sizeof(senderAddress);
-	int bytesReceived = recvfrom(clientSocket, buffer, sizeof(buffer), 0, (SOCKADDR*)&senderAddress, &senderAddressSize);
-	if (bytesReceived == SOCKET_ERROR) {
-		std::cerr << "Failed to receive message" << std::endl;
+
+#ifdef _WIN32
+	int bytesReceived = recvfrom(clientSocket, buffer, sizeof(buffer), 0, (struct sockaddr*)&senderAddress, &senderAddressSize);
+#else
+	ssize_t bytesReceived = recvfrom(clientSocket, buffer, sizeof(buffer), 0, (struct sockaddr*)&senderAddress, (socklen_t*)&senderAddressSize);
+#endif
+
+	if (bytesReceived == CROSS_PLATFORM_SOCKET_ERROR) {
+#ifdef _WIN32
+		int error = WSAGetLastError();
+		std::cerr << "Failed to receive message. Error code: " << error << std::endl;
+#else
+		perror("Failed to receive message");
+#endif
 	}
 }
+
 
 std::string extractIPAddress(const std::string& input) {
 	std::size_t delimiterPos = input.find(':');
 	if (delimiterPos != std::string::npos) {
 		return input.substr(0, delimiterPos);
 	}
+	return "";
 }
 
 int extractPort(const std::string& input) {
@@ -113,14 +140,14 @@ int extractPort(const std::string& input) {
 		std::string portStr = input.substr(delimiterPos + 1);
 		return std::stoi(portStr);
 	}
+	return 0;
 }
 
 void handleMessage() {
-	//std::cout << buffer << std::endl;
 	command = buffer[0];
 	text = "";
 	text.append(&buffer[2]);
-	switch (command){
+	switch (command) {
 	case 'E':
 		receiverAddress = getAddress(extractIPAddress(text), extractPort(text));
 		break;
@@ -130,16 +157,17 @@ void handleMessage() {
 	case 'M':
 		std::cout << std::endl;
 		std::cout << std::endl;
-		//std::cout << "\x1b[32m" << "----  " << text << std::endl;
 		std::cout << "----  " << text << std::endl;
 		std::cout << std::endl;
 		menuPrompt();
 		break;
 	case 'L':
 		std::cout << "\nNow there are in the chat: " << std::endl;
-		for (auto c:text){
-			if (c == ':') std::cout << std::endl;
-			else std::cout << c;
+		for (auto c : text) {
+			if (c == ':')
+				std::cout << std::endl;
+			else
+				std::cout << c;
 		}
 		std::cout << std::endl;
 		menuPrompt();
@@ -171,7 +199,6 @@ void sendMessage() {
 		std::cin.ignore();
 		text = "";
 		std::getline(std::cin, text);
-		//text = "M:" + clientName + "  --->  " + text + "\x1b[0m";
 		text = "M:" + clientName + "  --->  " + text;
 		messageTo(text, "receiver");
 	}
@@ -211,13 +238,12 @@ void console() {
 	}
 }
 
-
 int main() {
 	if (!createClient())
 		return -1;
+
 	registerClient();
 	getClients();
-
 
 	std::thread receiveThread(receiveMessages);
 	std::thread consoleThread(console);
