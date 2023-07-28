@@ -36,7 +36,9 @@ char buffer[1024];
 std::string clientName;
 std::string receiver;
 std::string text;
+std::string password;
 char command;
+bool toExit = false;
 
 void menuPrompt() {
 	std::cout << "\n";
@@ -153,8 +155,25 @@ void handleMessage() {
 	case 'E':
 		receiverAddress = getAddress(extractIPAddress(text), extractPort(text));
 		break;
+	case 'A':
+		std::cout << "The client is not in the chat now\n\n";
+		break;
+	case 'B':
+		std::cout << "Wrong password\n";
+		toExit = true;
+		break;
 	case 'N':
 		std::cout << "No such client\n\n";
+		break;
+	case 'C':
+		std::cout << "To sign in enter your password: \n";
+		std::getline(std::cin, password);
+		messageTo("V:" + password);
+		break;
+	case 'P':
+		std::cout << "Enter the password: \n";
+		std::getline(std::cin, password);
+		messageTo("S:" + password);
 		break;
 	case 'M':
 		std::cout << std::endl;
@@ -164,13 +183,14 @@ void handleMessage() {
 		menuPrompt();
 		break;
 	case 'L':
-		std::cout << "\nNow there are in the chat: " << std::endl;
-		for (auto c : text) {
-			if (c == ':')
-				std::cout << std::endl;
-			else
-				std::cout << c;
-		}
+		std::cout << text;
+		//std::cout << "\nNow there are in the chat: " << std::endl;
+		//for (auto c : text) {
+		//	if (c == ':')
+		//		std::cout << std::endl;
+		//	else
+		//		std::cout << c;
+		//}
 		std::cout << std::endl;
 		menuPrompt();
 		break;
@@ -213,7 +233,7 @@ void getClients() {
 }
 
 void receiveMessages() {
-	while (true) {
+	while (!toExit) {
 		getMessage();
 		handleMessage();
 	}
@@ -221,7 +241,7 @@ void receiveMessages() {
 
 void console() {
 	char choice;
-	while (true) {
+	while (!toExit) {
 		std::cin >> choice;
 		switch (choice) {
 		case '0':
