@@ -2,27 +2,12 @@
 #include <string>
 #include <thread>
 
-#ifdef _WIN32
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 #include <winsock2.h>
 #include <Windows.h>
 #pragma comment(lib, "ws2_32.lib")
-#else
-#include <cstring>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#define SOCKET int
-#define INVALID_SOCKET -1
-#define Sleep(x) usleep((x)*1000)
-#endif
 
-#ifdef _WIN32
 #define CROSS_PLATFORM_SOCKET_ERROR SOCKET_ERROR
-#else
-#define CROSS_PLATFORM_SOCKET_ERROR -1
-#endif
 
 #define PORT 12345
 
@@ -44,25 +29,22 @@ void menuPrompt() {
 	std::cout << "\n";
 	std::cout << "[0] Exit  ";
 	std::cout << "[1] Send message  ";
-	std::cout << "[2] Get clients list\n";
+	std::cout << "[2] Get clients list  ";
+	std::cout << "[3] Get message history  \n";
 	std::cout << "Enter your choice: ";
 }
 
-bool createClient() {
-#ifdef _WIN32
+bool createClientSocket() {
 	WSADATA wsaData;
 	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
 		std::cerr << "Failed to initialize winsock" << std::endl;
 		return false;
 	}
-#endif
 
 	clientSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (clientSocket == INVALID_SOCKET) {
 		std::cerr << "Failed to create socket" << std::endl;
-#ifdef _WIN32
 		WSACleanup();
-#endif
 		return false;
 	}
 
@@ -85,27 +67,18 @@ struct sockaddr_in getAddress(std::string IP, int port) {
 	return address;
 }
 
-bool messageTo(std::string text, std::string name = "server") {
+bool sendMessage(std::string text, std::string name = "server") {
 	struct sockaddr_in address;
 	address = (name == "server") ? serverAddress : receiverAddress;
 
 	int result = sendto(clientSocket, text.c_str(), text.size(), 0, (struct sockaddr*)&address, sizeof(address));
 	if (result == CROSS_PLATFORM_SOCKET_ERROR) {
-#ifdef _WIN32
 		int error = WSAGetLastError();
 		std::cerr << "Failed to send message. Error code: " << error << std::endl;
-#else
-		perror("Failed to send message");
-#endif
 		return false;
 	}
 
 	return true;
-}
-
-void registerClient() {
-	text = "R:" + clientName;
-	messageTo(text);
 }
 
 void getMessage() {
@@ -113,19 +86,38 @@ void getMessage() {
 	memset(buffer, 0, sizeof(buffer));
 	senderAddressSize = sizeof(senderAddress);
 
-#ifdef _WIN32
 	int bytesReceived = recvfrom(clientSocket, buffer, sizeof(buffer), 0, (struct sockaddr*)&senderAddress, &senderAddressSize);
-#else
-	ssize_t bytesReceived = recvfrom(clientSocket, buffer, sizeof(buffer), 0, (struct sockaddr*)&senderAddress, (socklen_t*)&senderAddressSize);
-#endif
 
 	if (bytesReceived == CROSS_PLATFORM_SOCKET_ERROR) {
-#ifdef _WIN32
 		int error = WSAGetLastError();
 		std::cerr << "Failed to receive message. Error code: " << error << std::endl;
-#else
-		perror("Failed to receive message");
-#endif
+	}
+}
+
+void registerClient() {
+	bool wrongPW = true;
+	text = "R:" + clientName;
+	sendMessage(text);
+	Sleep(500);
+	getMessage();
+	switch (buffer[0]) {
+	case 'C':
+		std::cout << "To sign in enter your password: \n";
+		while (wrongPW)	{
+			std::getline(std::cin, password);
+			sendMessage("V:" + password);
+			Sleep(500);
+			getMessage();
+			wrongPW = buffer[0] == 'B';
+			if (wrongPW)
+				std::cout << "Wrong password. Try again: \n";
+		}
+		break;
+	case 'P':
+		std::cout << "Enter the password: \n";
+		std::getline(std::cin, password);
+		sendMessage("S:" + password);
+		break;
 	}
 }
 
@@ -158,39 +150,23 @@ void handleMessage() {
 	case 'A':
 		std::cout << "The client is not in the chat now\n\n";
 		break;
-	case 'B':
-		std::cout << "Wrong password\n";
-		toExit = true;
-		break;
 	case 'N':
 		std::cout << "No such client\n\n";
-		break;
-	case 'C':
-		std::cout << "To sign in enter your password: \n";
-		std::getline(std::cin, password);
-		messageTo("V:" + password);
-		break;
-	case 'P':
-		std::cout << "Enter the password: \n";
-		std::getline(std::cin, password);
-		messageTo("S:" + password);
 		break;
 	case 'M':
 		std::cout << std::endl;
 		std::cout << std::endl;
-		std::cout << "----  " << text << std::endl;
+		std::cout << "  " << text << std::endl;
 		std::cout << std::endl;
 		menuPrompt();
 		break;
 	case 'L':
 		std::cout << text;
-		//std::cout << "\nNow there are in the chat: " << std::endl;
-		//for (auto c : text) {
-		//	if (c == ':')
-		//		std::cout << std::endl;
-		//	else
-		//		std::cout << c;
-		//}
+		std::cout << std::endl;
+		menuPrompt();
+		break;
+	case 'H':
+		std::cout << text;
 		std::cout << std::endl;
 		menuPrompt();
 		break;
@@ -203,11 +179,13 @@ void handleMessage() {
 
 void closeConsole() {
 	std::cout << "Exiting client..." << std::endl;
+	// to do: signed_in = 0
 }
 
+// check if the client is in the chat now or not and if it is even in the database at all 
 bool checkName(std::string name) {
 	text = "C:" + name;
-	messageTo(text);
+	sendMessage(text);
 	return true;
 }
 
@@ -216,20 +194,29 @@ void sendMessage() {
 	std::cin >> receiver;
 	checkName(receiver);
 	Sleep(200);
+	// if the client is in the chat now
 	if (command == 'E') {
 		std::cout << "Enter message: ";
 		std::cin.ignore();
 		text = "";
 		std::getline(std::cin, text);
-		text = "M:" + clientName + "  --->  " + text;
-		messageTo(text, "receiver");
+		text = "M:" + clientName + ">>  " + text;
+		// send message to the receiver
+		sendMessage(text, "receiver");
+		// send message to the server to save it
+		sendMessage(text);
 	}
 	std::cout << std::endl;
 	menuPrompt();
 }
 
-void getClients() {
-	messageTo("L:");
+// get list of the clients in the chat
+void getPresentClientsList() {
+	sendMessage("L:");
+}
+
+void getMessageHistory() {
+	sendMessage("H:");
 }
 
 void receiveMessages() {
@@ -251,7 +238,10 @@ void console() {
 			sendMessage();
 			break;
 		case '2':
-			getClients();
+			getPresentClientsList();
+			break;
+		case '3':
+			getMessageHistory();
 			break;
 		default:
 			std::cout << "Invalid menu choice. Please try again." << std::endl;
@@ -261,11 +251,12 @@ void console() {
 }
 
 int main() {
-	if (!createClient())
+	if (!createClientSocket())
 		return -1;
 
 	registerClient();
-	getClients();
+	getPresentClientsList();
+	SetConsoleOutputCP(CP_UTF8);
 
 	std::thread receiveThread(receiveMessages);
 	std::thread consoleThread(console);
@@ -273,9 +264,7 @@ int main() {
 	receiveThread.join();
 	consoleThread.join();
 
-#ifdef _WIN32
 	WSACleanup();
-#endif
 
 	return 0;
 }
