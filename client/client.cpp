@@ -179,6 +179,7 @@ void handleMessage() {
 
 void closeConsole() {
 	std::cout << "Exiting client..." << std::endl;
+	toExit = true;
 	// to do: signed_in = 0
 }
 
